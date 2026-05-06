@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html>
+    <head>
+	<title>Thermal Sim</title>
+	<meta charset="utf-8">
+	<style>
+	 body {
+	     background: #111;
+	     color: #ccc;
+	     font-family: sans-serif;
+	 }
+	 .thermo {
+	     width:800px;
+	     margin: 0 auto;
+	 }
+	 button {
+	     background: #111;
+	     color: #ccc;
+	     border-radius: 8px;
+	     border: 1px solid #ccc;
+	     padding: 6px;
+	     cursor: pointer;
+	 }
+	 select {
+	     background: #111;
+	     color: #ccc;
+	     border-radius: 8px;
+	     border: 1px solid #ccc;
+	 }	     
+	</style>
+    </head>
+    <body>
+	<div class="sim">
+	    <h2 class="sr-only">Interactive thermodynamic cooling</h2>
+	    <p>A simulator with sliders for power draw, fan count, airflow, heatsink mass and material, junction thermal resistance, and ambient temperature, showing live junction and heatsink temperature traces against the T-junction-max safety limit.</p>
+
+<style>
+  .thermo { font-family: var(--font-sans); padding: 0.5rem 0; }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; margin-bottom: 6px; color: var(--color-text-secondary); align-items: center; }
+  .legend-item { display: flex; align-items: center; gap: 6px; }
+  .legend-sw { width: 16px; height: 2px; border-radius: 1px; display: inline-block; }
+  .chart-wrap { position: relative; height: 240px; background: var(--color-background-secondary); border-radius: var(--border-radius-lg); padding: 10px 12px; margin-bottom: 12px; }
+  .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(108px, 1fr)); gap: 8px; margin-bottom: 14px; }
+  .metric { background: var(--color-background-secondary); border-radius: var(--border-radius-md); padding: 10px 12px; min-width: 0; }
+  .metric-label { font-size: 11px; color: var(--color-text-secondary); margin-bottom: 4px; }
+  .metric-value { font-size: 17px; font-weight: 500; font-family: var(--font-mono); line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .metric-value.warn { color: var(--color-text-warning); }
+  .metric-value.danger { color: var(--color-text-danger); }
+  .panels { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  @media (max-width: 600px) { .panels { grid-template-columns: 1fr; } }
+  .panel { background: var(--color-background-primary); border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-lg); padding: 14px 16px; min-width: 0; }
+  .panel-label { font-size: 13px; font-weight: 500; margin: 0 0 12px; color: var(--color-text-primary); }
+  .ctrl { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; font-size: 12px; min-width: 0; }
+  .ctrl > label { flex: 0 0 92px; color: var(--color-text-secondary); }
+  .ctrl input[type=range] { flex: 1; min-width: 0; }
+  .ctrl select { flex: 1; min-width: 0; }
+  .ctrl-val { flex: 0 0 64px; text-align: right; font-family: var(--font-mono); font-size: 12px; font-weight: 500; }
+  .toolbar { display: flex; gap: 6px; align-items: center; margin-top: 14px; flex-wrap: wrap; padding-top: 12px; border-top: 0.5px solid var(--color-border-tertiary); }
+  .speed-btn { padding: 4px 10px; font-size: 12px; }
+  .speed-btn.active { background: var(--color-background-info); color: var(--color-text-info); border-color: var(--color-border-info); }
+  .speed-label { font-size: 11px; color: var(--color-text-secondary); margin-left: auto; }
+</style>
+
+<div class="thermo">
+  <div class="legend">
+    <span class="legend-item"><span class="legend-sw" style="background:#E24B4A"></span>Junction T<sub>j</sub></span>
+    <span class="legend-item"><span class="legend-sw" style="background:#EF9F27"></span>Heatsink T<sub>s</sub></span>
+    <span class="legend-item"><span class="legend-sw" style="background:#888780"></span>Ambient</span>
+    <span class="legend-item"><span class="legend-sw" style="background:#E24B4A;opacity:0.5"></span>T<sub>j,max</sub></span>
+    <span class="legend-item" style="margin-left:auto;font-family:var(--font-mono);" id="time-readout">t = 0 s</span>
+  </div>
+
+  <div class="chart-wrap"><canvas id="chart" style="width:100%;height:100%;display:block;"></canvas></div>
+
+  <div class="metrics">
+    <div class="metric"><div class="metric-label">Junction T<sub>j</sub></div><div class="metric-value" id="m-tj">22.0 °C</div></div>
+    <div class="metric"><div class="metric-label">Heatsink T<sub>s</sub></div><div class="metric-value" id="m-ts">22.0 °C</div></div>
+    <div class="metric"><div class="metric-label">Steady-state T<sub>j</sub></div><div class="metric-value" id="m-ss">22.0 °C</div></div>
+    <div class="metric"><div class="metric-label">R<sub>θ,sa</sub></div><div class="metric-value" id="m-rsa">— K/W</div></div>
+    <div class="metric"><div class="metric-label">τ heatsink</div><div class="metric-value" id="m-tau">— s</div></div>
+    <div class="metric"><div class="metric-label">Total airflow</div><div class="metric-value" id="m-cfm">— CFM</div></div>
+  </div>
+
+  <div class="panels">
+    <div class="panel">
+      <div class="panel-label">Heat source &amp; component</div>
+      <div class="ctrl"><label>Power</label><input type="range" id="s-p" min="5" max="500" value="100" step="1"><span class="ctrl-val" id="v-p">100 W</span></div>
+      <div class="ctrl"><label>Ambient</label><input type="range" id="s-ta" min="0" max="50" value="22" step="0.5"><span class="ctrl-val" id="v-ta">22.0 °C</span></div>
+      <div class="ctrl"><label>T<sub>j,max</sub></label><input type="range" id="s-tjm" min="60" max="125" value="100" step="1"><span class="ctrl-val" id="v-tjm">100 °C</span></div>
+      <div class="ctrl"><label>R<sub>θ,jc</sub></label><input type="range" id="s-rjc" min="0.05" max="1.00" value="0.15" step="0.01"><span class="ctrl-val" id="v-rjc">0.15 K/W</span></div>
+      <div class="ctrl"><label>C<sub>j</sub></label><input type="range" id="s-cj" min="5" max="200" value="30" step="1"><span class="ctrl-val" id="v-cj">30 J/K</span></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-label">Cooling system</div>
+      <div class="ctrl"><label>Fans</label><input type="range" id="s-nf" min="0" max="6" value="2" step="1"><span class="ctrl-val" id="v-nf">2 ×</span></div>
+      <div class="ctrl"><label>CFM / fan</label><input type="range" id="s-cf" min="0" max="200" value="50" step="1"><span class="ctrl-val" id="v-cf">50 CFM</span></div>
+      <div class="ctrl"><label>Sink mass</label><input type="range" id="s-hm" min="50" max="2000" value="500" step="10"><span class="ctrl-val" id="v-hm">500 g</span></div>
+      <div class="ctrl"><label>Sink area</label><input type="range" id="s-ha" min="0.02" max="0.50" value="0.15" step="0.01"><span class="ctrl-val" id="v-ha">0.15 m²</span></div>
+      <div class="ctrl"><label>Material</label>
+        <select id="s-mat">
+          <option value="897">Aluminium 6061</option>
+          <option value="385">Copper C110</option>
+          <option value="490">Mild steel</option>
+        </select>
+      </div>
+
+      <div class="toolbar">
+	  <div>
+        <button id="btn-reset">Reset</button>
+        <button id="btn-fan-fail">Cut fans</button>
+        <button id="btn-pause">Pause</button>
+	  </div>
+	  <div>
+        <span class="speed-label">Sim speed</span>
+        <button class="speed-btn" data-speed="1">1×</button>
+        <button class="speed-btn active" data-speed="5">5×</button>
+        <button class="speed-btn" data-speed="20">20×</button>
+        <button class="speed-btn" data-speed="60">60×</button>
+	  </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const $ = (id) => document.getElementById(id);
+
+  const state = {
+    P: 100, Ta: 22, Tjmax: 100, Rjc: 0.15, Cj: 30,
+    nFans: 2, cfmEach: 50, hmass: 500, harea: 0.15, cMat: 897,
+    Tj: 22, Ts: 22, time: 0,
+    history: [], simSpeed: 5, paused: false
+  };
+
+  const DT = 0.05;
+
+  function Cs() { return state.hmass / 1000 * state.cMat; }
+  function totalCFM() { return state.nFans * state.cfmEach; }
+
+  // Empirical sink-to-ambient resistance vs airflow.
+  // Asymptotes: R_passive ≈ 4 K/W (still air), R_min ≈ 0.06 K/W (saturating high airflow).
+  // Area scales the model: larger fins → lower R at any given airflow.
+  function Rsa() {
+    const cfm = totalCFM();
+    const areaScale = Math.pow(0.15 / Math.max(state.harea, 0.01), 0.6);
+    const Rmin = 0.06 * areaScale;
+    const Rpas = 4.0 * areaScale;
+    const cfm0 = 30;
+    return Rmin + (Rpas - Rmin) * Math.exp(-cfm / cfm0);
+  }
+  function steadyTj() { return state.Ta + state.P * (state.Rjc + Rsa()); }
+  function tauSink()  { return Cs() * Rsa(); }
+
+  function step() {
+    const cs = Cs();
+    const rsa = Rsa();
+    const Q_js = (state.Tj - state.Ts) / state.Rjc;          // junction → sink heat flow
+    const Q_sa = (state.Ts - state.Ta) / rsa;                // sink → ambient
+    state.Tj += (state.P - Q_js) / state.Cj * DT;
+    state.Ts += (Q_js - Q_sa) / cs * DT;
+    state.time += DT;
+    const last = state.history[state.history.length - 1];
+    if (!last || state.time - last.t >= 0.25) {
+      state.history.push({ t: state.time, Tj: state.Tj, Ts: state.Ts, Ta: state.Ta });
+      while (state.history.length && state.time - state.history[0].t > 1200) state.history.shift();
+    }
+  }
+
+  // ---------- chart ----------
+  const canvas = $('chart');
+  const ctx = canvas.getContext('2d');
+
+  function readVar(name, fb) {
+    const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    return v || fb;
+  }
+
+  function drawChart() {
+    const dpr = window.devicePixelRatio || 1;
+    const wrap = canvas.parentElement;
+    const cssW = wrap.clientWidth - 24;
+    const cssH = wrap.clientHeight - 20;
+    if (canvas.width !== cssW * dpr || canvas.height !== cssH * dpr) {
+      canvas.style.width = cssW + 'px';
+      canvas.style.height = cssH + 'px';
+      canvas.width = Math.max(1, cssW * dpr);
+      canvas.height = Math.max(1, cssH * dpr);
+    }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, cssW, cssH);
+
+    const padL = 40, padR = 8, padT = 6, padB = 18;
+    const plotW = cssW - padL - padR;
+    const plotH = cssH - padT - padB;
+
+    let span;
+    if (state.time < 60) span = 60;
+    else if (state.time < 600) span = state.time;
+    else span = 600;
+    const tEnd = state.time;
+    const tStart = Math.max(0, tEnd - span);
+
+    let yMin = state.Ta - 5;
+    let yMax = Math.max(state.Tjmax + 8, state.Tj + 8, steadyTj() + 8);
+    yMin = Math.floor(yMin / 10) * 10;
+    yMax = Math.ceil(yMax / 10) * 10;
+    if (yMax - yMin < 40) yMax = yMin + 40;
+
+    const x2 = (t) => padL + (t - tStart) / span * plotW;
+    const y2 = (T) => padT + (1 - (T - yMin) / (yMax - yMin)) * plotH;
+
+    const textCol  = readVar('--color-text-tertiary', '#888');
+    const grid     = 'rgba(128,128,128,0.18)';
+    const fontFam  = getComputedStyle(document.body).fontFamily || 'system-ui, sans-serif';
+
+    ctx.font = '11px ' + fontFam;
+    ctx.fillStyle = textCol;
+    ctx.strokeStyle = grid;
+    ctx.lineWidth = 0.5;
+
+    const yTicks = 5;
+    for (let i = 0; i <= yTicks; i++) {
+      const T = yMin + (yMax - yMin) * i / yTicks;
+      const y = y2(T);
+      ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(padL + plotW, y); ctx.stroke();
+      ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+      ctx.fillText(T.toFixed(0) + '°', padL - 6, y);
+    }
+    const xTicks = 4;
+    for (let i = 0; i <= xTicks; i++) {
+      const t = tStart + span * i / xTicks;
+      const x = x2(t);
+      ctx.beginPath(); ctx.moveTo(x, padT); ctx.lineTo(x, padT + plotH); ctx.stroke();
+      ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+      ctx.fillText(t.toFixed(0) + 's', x, padT + plotH + 4);
+    }
+
+    // ambient (dashed gray)
+    ctx.strokeStyle = '#888780';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 3]);
+    ctx.beginPath(); ctx.moveTo(padL, y2(state.Ta)); ctx.lineTo(padL + plotW, y2(state.Ta)); ctx.stroke();
+
+    // T_jmax (dashed red)
+    ctx.strokeStyle = '#E24B4A';
+    ctx.globalAlpha = 0.55;
+    ctx.beginPath(); ctx.moveTo(padL, y2(state.Tjmax)); ctx.lineTo(padL + plotW, y2(state.Tjmax)); ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.setLineDash([]);
+
+    // traces
+    if (state.history.length > 1) {
+      const drawTrace = (key, color) => {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        let started = false;
+        for (const p of state.history) {
+          if (p.t < tStart) continue;
+          const x = x2(p.t), y = y2(p[key]);
+          if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+        }
+        ctx.lineTo(x2(state.time), y2(state[key === 'Tj' ? 'Tj' : 'Ts']));
+        ctx.stroke();
+      };
+      drawTrace('Ts', '#EF9F27');
+      drawTrace('Tj', '#E24B4A');
+    }
+
+    // clip indicator: shade region above T_jmax if breached
+    if (state.Tj > state.Tjmax) {
+      ctx.fillStyle = 'rgba(226,75,74,0.10)';
+      ctx.fillRect(padL, padT, plotW, y2(state.Tjmax) - padT);
+    }
+  }
+
+  // ---------- UI ----------
+  function updateReadouts() {
+    $('v-p').textContent   = state.P.toFixed(0) + ' W';
+    $('v-ta').textContent  = state.Ta.toFixed(1) + ' °C';
+    $('v-tjm').textContent = state.Tjmax.toFixed(0) + ' °C';
+    $('v-rjc').textContent = state.Rjc.toFixed(2) + ' K/W';
+    $('v-cj').textContent  = state.Cj.toFixed(0) + ' J/K';
+    $('v-nf').textContent  = state.nFans + ' ×';
+    $('v-cf').textContent  = state.cfmEach + ' CFM';
+    $('v-hm').textContent  = state.hmass + ' g';
+    $('v-ha').textContent  = state.harea.toFixed(2) + ' m²';
+
+    $('m-tj').textContent  = state.Tj.toFixed(1) + ' °C';
+    $('m-ts').textContent  = state.Ts.toFixed(1) + ' °C';
+    const ss = steadyTj();
+    $('m-ss').textContent  = ss.toFixed(1) + ' °C';
+    $('m-rsa').textContent = Rsa().toFixed(2) + ' K/W';
+    $('m-tau').textContent = tauSink().toFixed(0) + ' s';
+    $('m-cfm').textContent = totalCFM() + ' CFM';
+    $('time-readout').textContent = 't = ' + state.time.toFixed(0) + ' s';
+
+    const setStatus = (el, val) => {
+      el.classList.remove('warn', 'danger');
+      if (val > state.Tjmax) el.classList.add('danger');
+      else if (val > state.Tjmax * 0.9) el.classList.add('warn');
+    };
+    setStatus($('m-tj'), state.Tj);
+    setStatus($('m-ss'), ss);
+  }
+
+  function bind(id, prop, parser) {
+    const el = $(id);
+    const fn = parser || parseFloat;
+    el.addEventListener('input', () => { state[prop] = fn(el.value); updateReadouts(); });
+  }
+  bind('s-p',   'P');
+  bind('s-ta',  'Ta');
+  bind('s-tjm', 'Tjmax');
+  bind('s-rjc', 'Rjc');
+  bind('s-cj',  'Cj');
+  bind('s-nf',  'nFans',   parseInt);
+  bind('s-cf',  'cfmEach', parseInt);
+  bind('s-hm',  'hmass',   parseInt);
+  bind('s-ha',  'harea');
+  $('s-mat').addEventListener('change', e => { state.cMat = parseFloat(e.target.value); updateReadouts(); });
+
+  $('btn-reset').addEventListener('click', () => {
+    state.Tj = state.Ta; state.Ts = state.Ta;
+    state.time = 0; state.history = [];
+    updateReadouts();
+  });
+
+  $('btn-fan-fail').addEventListener('click', () => {
+    state.nFans = 0;
+    $('s-nf').value = 0;
+    updateReadouts();
+  });
+
+  const pauseBtn = $('btn-pause');
+  pauseBtn.addEventListener('click', () => {
+    state.paused = !state.paused;
+    pauseBtn.textContent = state.paused ? 'Resume' : 'Pause';
+  });
+
+  document.querySelectorAll('.speed-btn').forEach(b => {
+    b.addEventListener('click', () => {
+      document.querySelectorAll('.speed-btn').forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+      state.simSpeed = parseInt(b.dataset.speed);
+    });
+  });
+
+  // ---------- main loop ----------
+  let lastFrame = performance.now();
+  function loop(now) {
+    const wallElapsed = Math.min((now - lastFrame) / 1000, 0.1);
+    lastFrame = now;
+    if (!state.paused) {
+      const simSeconds = state.simSpeed * wallElapsed;
+      let n = Math.floor(simSeconds / DT);
+      if (n > 4000) n = 4000;
+      for (let i = 0; i < n; i++) step();
+    }
+    drawChart();
+    updateReadouts();
+    requestAnimationFrame(loop);
+  }
+
+  let resizeTO;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTO);
+    resizeTO = setTimeout(drawChart, 80);
+  });
+
+  updateReadouts();
+  drawChart();
+  requestAnimationFrame(loop);
+})();
+</script>
+	</div>
+    </body>
+</html>
