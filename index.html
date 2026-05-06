@@ -122,259 +122,262 @@
     </div>
   </div>
 </div>
+<p>
+    This page is served from <a href="https://rmp.github.io/thermal-sim/">https://rmp.github.io/thermal-sim/</a>. Details in the <a href="README.md">README.md</a>.
+</p>
 
-<script>
-(function(){
-  const $ = (id) => document.getElementById(id);
+    <script>
+     (function(){
+	 const $ = (id) => document.getElementById(id);
 
-  const state = {
-    P: 100, Ta: 22, Tjmax: 100, Rjc: 0.15, Cj: 30,
-    nFans: 2, cfmEach: 50, hmass: 500, harea: 0.15, cMat: 897,
-    Tj: 22, Ts: 22, time: 0,
-    history: [], simSpeed: 5, paused: false
-  };
+	 const state = {
+	     P: 100, Ta: 22, Tjmax: 100, Rjc: 0.15, Cj: 30,
+	     nFans: 2, cfmEach: 50, hmass: 500, harea: 0.15, cMat: 897,
+	     Tj: 22, Ts: 22, time: 0,
+	     history: [], simSpeed: 5, paused: false
+	 };
 
-  const DT = 0.05;
+	 const DT = 0.05;
 
-  function Cs() { return state.hmass / 1000 * state.cMat; }
-  function totalCFM() { return state.nFans * state.cfmEach; }
+	 function Cs() { return state.hmass / 1000 * state.cMat; }
+	 function totalCFM() { return state.nFans * state.cfmEach; }
 
-  // Empirical sink-to-ambient resistance vs airflow.
-  // Asymptotes: R_passive ≈ 4 K/W (still air), R_min ≈ 0.06 K/W (saturating high airflow).
-  // Area scales the model: larger fins → lower R at any given airflow.
-  function Rsa() {
-    const cfm = totalCFM();
-    const areaScale = Math.pow(0.15 / Math.max(state.harea, 0.01), 0.6);
-    const Rmin = 0.06 * areaScale;
-    const Rpas = 4.0 * areaScale;
-    const cfm0 = 30;
-    return Rmin + (Rpas - Rmin) * Math.exp(-cfm / cfm0);
-  }
-  function steadyTj() { return state.Ta + state.P * (state.Rjc + Rsa()); }
-  function tauSink()  { return Cs() * Rsa(); }
+	 // Empirical sink-to-ambient resistance vs airflow.
+	 // Asymptotes: R_passive ≈ 4 K/W (still air), R_min ≈ 0.06 K/W (saturating high airflow).
+	 // Area scales the model: larger fins → lower R at any given airflow.
+	 function Rsa() {
+	     const cfm = totalCFM();
+	     const areaScale = Math.pow(0.15 / Math.max(state.harea, 0.01), 0.6);
+	     const Rmin = 0.06 * areaScale;
+	     const Rpas = 4.0 * areaScale;
+	     const cfm0 = 30;
+	     return Rmin + (Rpas - Rmin) * Math.exp(-cfm / cfm0);
+	 }
+	 function steadyTj() { return state.Ta + state.P * (state.Rjc + Rsa()); }
+	 function tauSink()  { return Cs() * Rsa(); }
 
-  function step() {
-    const cs = Cs();
-    const rsa = Rsa();
-    const Q_js = (state.Tj - state.Ts) / state.Rjc;          // junction → sink heat flow
-    const Q_sa = (state.Ts - state.Ta) / rsa;                // sink → ambient
-    state.Tj += (state.P - Q_js) / state.Cj * DT;
-    state.Ts += (Q_js - Q_sa) / cs * DT;
-    state.time += DT;
-    const last = state.history[state.history.length - 1];
-    if (!last || state.time - last.t >= 0.25) {
-      state.history.push({ t: state.time, Tj: state.Tj, Ts: state.Ts, Ta: state.Ta });
-      while (state.history.length && state.time - state.history[0].t > 1200) state.history.shift();
-    }
-  }
+	 function step() {
+	     const cs = Cs();
+	     const rsa = Rsa();
+	     const Q_js = (state.Tj - state.Ts) / state.Rjc;          // junction → sink heat flow
+	     const Q_sa = (state.Ts - state.Ta) / rsa;                // sink → ambient
+	     state.Tj += (state.P - Q_js) / state.Cj * DT;
+	     state.Ts += (Q_js - Q_sa) / cs * DT;
+	     state.time += DT;
+	     const last = state.history[state.history.length - 1];
+	     if (!last || state.time - last.t >= 0.25) {
+		 state.history.push({ t: state.time, Tj: state.Tj, Ts: state.Ts, Ta: state.Ta });
+		 while (state.history.length && state.time - state.history[0].t > 1200) state.history.shift();
+	     }
+	 }
 
-  // ---------- chart ----------
-  const canvas = $('chart');
-  const ctx = canvas.getContext('2d');
+	 // ---------- chart ----------
+	 const canvas = $('chart');
+	 const ctx = canvas.getContext('2d');
 
-  function readVar(name, fb) {
-    const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-    return v || fb;
-  }
+	 function readVar(name, fb) {
+	     const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+	     return v || fb;
+	 }
 
-  function drawChart() {
-    const dpr = window.devicePixelRatio || 1;
-    const wrap = canvas.parentElement;
-    const cssW = wrap.clientWidth - 24;
-    const cssH = wrap.clientHeight - 20;
-    if (canvas.width !== cssW * dpr || canvas.height !== cssH * dpr) {
-      canvas.style.width = cssW + 'px';
-      canvas.style.height = cssH + 'px';
-      canvas.width = Math.max(1, cssW * dpr);
-      canvas.height = Math.max(1, cssH * dpr);
-    }
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, cssW, cssH);
+	 function drawChart() {
+	     const dpr = window.devicePixelRatio || 1;
+	     const wrap = canvas.parentElement;
+	     const cssW = wrap.clientWidth - 24;
+	     const cssH = wrap.clientHeight - 20;
+	     if (canvas.width !== cssW * dpr || canvas.height !== cssH * dpr) {
+		 canvas.style.width = cssW + 'px';
+		 canvas.style.height = cssH + 'px';
+		 canvas.width = Math.max(1, cssW * dpr);
+		 canvas.height = Math.max(1, cssH * dpr);
+	     }
+	     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+	     ctx.clearRect(0, 0, cssW, cssH);
 
-    const padL = 40, padR = 8, padT = 6, padB = 18;
-    const plotW = cssW - padL - padR;
-    const plotH = cssH - padT - padB;
+	     const padL = 40, padR = 8, padT = 6, padB = 18;
+	     const plotW = cssW - padL - padR;
+	     const plotH = cssH - padT - padB;
 
-    let span;
-    if (state.time < 60) span = 60;
-    else if (state.time < 600) span = state.time;
-    else span = 600;
-    const tEnd = state.time;
-    const tStart = Math.max(0, tEnd - span);
+	     let span;
+	     if (state.time < 60) span = 60;
+	     else if (state.time < 600) span = state.time;
+	     else span = 600;
+	     const tEnd = state.time;
+	     const tStart = Math.max(0, tEnd - span);
 
-    let yMin = state.Ta - 5;
-    let yMax = Math.max(state.Tjmax + 8, state.Tj + 8, steadyTj() + 8);
-    yMin = Math.floor(yMin / 10) * 10;
-    yMax = Math.ceil(yMax / 10) * 10;
-    if (yMax - yMin < 40) yMax = yMin + 40;
+	     let yMin = state.Ta - 5;
+	     let yMax = Math.max(state.Tjmax + 8, state.Tj + 8, steadyTj() + 8);
+	     yMin = Math.floor(yMin / 10) * 10;
+	     yMax = Math.ceil(yMax / 10) * 10;
+	     if (yMax - yMin < 40) yMax = yMin + 40;
 
-    const x2 = (t) => padL + (t - tStart) / span * plotW;
-    const y2 = (T) => padT + (1 - (T - yMin) / (yMax - yMin)) * plotH;
+	     const x2 = (t) => padL + (t - tStart) / span * plotW;
+	     const y2 = (T) => padT + (1 - (T - yMin) / (yMax - yMin)) * plotH;
 
-    const textCol  = readVar('--color-text-tertiary', '#888');
-    const grid     = 'rgba(128,128,128,0.18)';
-    const fontFam  = getComputedStyle(document.body).fontFamily || 'system-ui, sans-serif';
+	     const textCol  = readVar('--color-text-tertiary', '#888');
+	     const grid     = 'rgba(128,128,128,0.18)';
+	     const fontFam  = getComputedStyle(document.body).fontFamily || 'system-ui, sans-serif';
 
-    ctx.font = '11px ' + fontFam;
-    ctx.fillStyle = textCol;
-    ctx.strokeStyle = grid;
-    ctx.lineWidth = 0.5;
+	     ctx.font = '11px ' + fontFam;
+	     ctx.fillStyle = textCol;
+	     ctx.strokeStyle = grid;
+	     ctx.lineWidth = 0.5;
 
-    const yTicks = 5;
-    for (let i = 0; i <= yTicks; i++) {
-      const T = yMin + (yMax - yMin) * i / yTicks;
-      const y = y2(T);
-      ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(padL + plotW, y); ctx.stroke();
-      ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
-      ctx.fillText(T.toFixed(0) + '°', padL - 6, y);
-    }
-    const xTicks = 4;
-    for (let i = 0; i <= xTicks; i++) {
-      const t = tStart + span * i / xTicks;
-      const x = x2(t);
-      ctx.beginPath(); ctx.moveTo(x, padT); ctx.lineTo(x, padT + plotH); ctx.stroke();
-      ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-      ctx.fillText(t.toFixed(0) + 's', x, padT + plotH + 4);
-    }
+	     const yTicks = 5;
+	     for (let i = 0; i <= yTicks; i++) {
+		 const T = yMin + (yMax - yMin) * i / yTicks;
+		 const y = y2(T);
+		 ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(padL + plotW, y); ctx.stroke();
+		 ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+		 ctx.fillText(T.toFixed(0) + '°', padL - 6, y);
+	     }
+	     const xTicks = 4;
+	     for (let i = 0; i <= xTicks; i++) {
+		 const t = tStart + span * i / xTicks;
+		 const x = x2(t);
+		 ctx.beginPath(); ctx.moveTo(x, padT); ctx.lineTo(x, padT + plotH); ctx.stroke();
+		 ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+		 ctx.fillText(t.toFixed(0) + 's', x, padT + plotH + 4);
+	     }
 
-    // ambient (dashed gray)
-    ctx.strokeStyle = '#888780';
-    ctx.lineWidth = 1;
-    ctx.setLineDash([4, 3]);
-    ctx.beginPath(); ctx.moveTo(padL, y2(state.Ta)); ctx.lineTo(padL + plotW, y2(state.Ta)); ctx.stroke();
+	     // ambient (dashed gray)
+	     ctx.strokeStyle = '#888780';
+	     ctx.lineWidth = 1;
+	     ctx.setLineDash([4, 3]);
+	     ctx.beginPath(); ctx.moveTo(padL, y2(state.Ta)); ctx.lineTo(padL + plotW, y2(state.Ta)); ctx.stroke();
 
-    // T_jmax (dashed red)
-    ctx.strokeStyle = '#E24B4A';
-    ctx.globalAlpha = 0.55;
-    ctx.beginPath(); ctx.moveTo(padL, y2(state.Tjmax)); ctx.lineTo(padL + plotW, y2(state.Tjmax)); ctx.stroke();
-    ctx.globalAlpha = 1;
-    ctx.setLineDash([]);
+	     // T_jmax (dashed red)
+	     ctx.strokeStyle = '#E24B4A';
+	     ctx.globalAlpha = 0.55;
+	     ctx.beginPath(); ctx.moveTo(padL, y2(state.Tjmax)); ctx.lineTo(padL + plotW, y2(state.Tjmax)); ctx.stroke();
+	     ctx.globalAlpha = 1;
+	     ctx.setLineDash([]);
 
-    // traces
-    if (state.history.length > 1) {
-      const drawTrace = (key, color) => {
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 1.6;
-        ctx.beginPath();
-        let started = false;
-        for (const p of state.history) {
-          if (p.t < tStart) continue;
-          const x = x2(p.t), y = y2(p[key]);
-          if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
-        }
-        ctx.lineTo(x2(state.time), y2(state[key === 'Tj' ? 'Tj' : 'Ts']));
-        ctx.stroke();
-      };
-      drawTrace('Ts', '#EF9F27');
-      drawTrace('Tj', '#E24B4A');
-    }
+	     // traces
+	     if (state.history.length > 1) {
+		 const drawTrace = (key, color) => {
+		     ctx.strokeStyle = color;
+		     ctx.lineWidth = 1.6;
+		     ctx.beginPath();
+		     let started = false;
+		     for (const p of state.history) {
+			 if (p.t < tStart) continue;
+			 const x = x2(p.t), y = y2(p[key]);
+			 if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+		     }
+		     ctx.lineTo(x2(state.time), y2(state[key === 'Tj' ? 'Tj' : 'Ts']));
+		     ctx.stroke();
+		 };
+		 drawTrace('Ts', '#EF9F27');
+		 drawTrace('Tj', '#E24B4A');
+	     }
 
-    // clip indicator: shade region above T_jmax if breached
-    if (state.Tj > state.Tjmax) {
-      ctx.fillStyle = 'rgba(226,75,74,0.10)';
-      ctx.fillRect(padL, padT, plotW, y2(state.Tjmax) - padT);
-    }
-  }
+	     // clip indicator: shade region above T_jmax if breached
+	     if (state.Tj > state.Tjmax) {
+		 ctx.fillStyle = 'rgba(226,75,74,0.10)';
+		 ctx.fillRect(padL, padT, plotW, y2(state.Tjmax) - padT);
+	     }
+	 }
 
-  // ---------- UI ----------
-  function updateReadouts() {
-    $('v-p').textContent   = state.P.toFixed(0) + ' W';
-    $('v-ta').textContent  = state.Ta.toFixed(1) + ' °C';
-    $('v-tjm').textContent = state.Tjmax.toFixed(0) + ' °C';
-    $('v-rjc').textContent = state.Rjc.toFixed(2) + ' K/W';
-    $('v-cj').textContent  = state.Cj.toFixed(0) + ' J/K';
-    $('v-nf').textContent  = state.nFans + ' ×';
-    $('v-cf').textContent  = state.cfmEach + ' CFM';
-    $('v-hm').textContent  = state.hmass + ' g';
-    $('v-ha').textContent  = state.harea.toFixed(2) + ' m²';
+	 // ---------- UI ----------
+	 function updateReadouts() {
+	     $('v-p').textContent   = state.P.toFixed(0) + ' W';
+	     $('v-ta').textContent  = state.Ta.toFixed(1) + ' °C';
+	     $('v-tjm').textContent = state.Tjmax.toFixed(0) + ' °C';
+	     $('v-rjc').textContent = state.Rjc.toFixed(2) + ' K/W';
+	     $('v-cj').textContent  = state.Cj.toFixed(0) + ' J/K';
+	     $('v-nf').textContent  = state.nFans + ' ×';
+	     $('v-cf').textContent  = state.cfmEach + ' CFM';
+	     $('v-hm').textContent  = state.hmass + ' g';
+	     $('v-ha').textContent  = state.harea.toFixed(2) + ' m²';
 
-    $('m-tj').textContent  = state.Tj.toFixed(1) + ' °C';
-    $('m-ts').textContent  = state.Ts.toFixed(1) + ' °C';
-    const ss = steadyTj();
-    $('m-ss').textContent  = ss.toFixed(1) + ' °C';
-    $('m-rsa').textContent = Rsa().toFixed(2) + ' K/W';
-    $('m-tau').textContent = tauSink().toFixed(0) + ' s';
-    $('m-cfm').textContent = totalCFM() + ' CFM';
-    $('time-readout').textContent = 't = ' + state.time.toFixed(0) + ' s';
+	     $('m-tj').textContent  = state.Tj.toFixed(1) + ' °C';
+	     $('m-ts').textContent  = state.Ts.toFixed(1) + ' °C';
+	     const ss = steadyTj();
+	     $('m-ss').textContent  = ss.toFixed(1) + ' °C';
+	     $('m-rsa').textContent = Rsa().toFixed(2) + ' K/W';
+	     $('m-tau').textContent = tauSink().toFixed(0) + ' s';
+	     $('m-cfm').textContent = totalCFM() + ' CFM';
+	     $('time-readout').textContent = 't = ' + state.time.toFixed(0) + ' s';
 
-    const setStatus = (el, val) => {
-      el.classList.remove('warn', 'danger');
-      if (val > state.Tjmax) el.classList.add('danger');
-      else if (val > state.Tjmax * 0.9) el.classList.add('warn');
-    };
-    setStatus($('m-tj'), state.Tj);
-    setStatus($('m-ss'), ss);
-  }
+	     const setStatus = (el, val) => {
+		 el.classList.remove('warn', 'danger');
+		 if (val > state.Tjmax) el.classList.add('danger');
+		 else if (val > state.Tjmax * 0.9) el.classList.add('warn');
+	     };
+	     setStatus($('m-tj'), state.Tj);
+	     setStatus($('m-ss'), ss);
+	 }
 
-  function bind(id, prop, parser) {
-    const el = $(id);
-    const fn = parser || parseFloat;
-    el.addEventListener('input', () => { state[prop] = fn(el.value); updateReadouts(); });
-  }
-  bind('s-p',   'P');
-  bind('s-ta',  'Ta');
-  bind('s-tjm', 'Tjmax');
-  bind('s-rjc', 'Rjc');
-  bind('s-cj',  'Cj');
-  bind('s-nf',  'nFans',   parseInt);
-  bind('s-cf',  'cfmEach', parseInt);
-  bind('s-hm',  'hmass',   parseInt);
-  bind('s-ha',  'harea');
-  $('s-mat').addEventListener('change', e => { state.cMat = parseFloat(e.target.value); updateReadouts(); });
+	 function bind(id, prop, parser) {
+	     const el = $(id);
+	     const fn = parser || parseFloat;
+	     el.addEventListener('input', () => { state[prop] = fn(el.value); updateReadouts(); });
+	 }
+	 bind('s-p',   'P');
+	 bind('s-ta',  'Ta');
+	 bind('s-tjm', 'Tjmax');
+	 bind('s-rjc', 'Rjc');
+	 bind('s-cj',  'Cj');
+	 bind('s-nf',  'nFans',   parseInt);
+	 bind('s-cf',  'cfmEach', parseInt);
+	 bind('s-hm',  'hmass',   parseInt);
+	 bind('s-ha',  'harea');
+	 $('s-mat').addEventListener('change', e => { state.cMat = parseFloat(e.target.value); updateReadouts(); });
 
-  $('btn-reset').addEventListener('click', () => {
-    state.Tj = state.Ta; state.Ts = state.Ta;
-    state.time = 0; state.history = [];
-    updateReadouts();
-  });
+	 $('btn-reset').addEventListener('click', () => {
+	     state.Tj = state.Ta; state.Ts = state.Ta;
+	     state.time = 0; state.history = [];
+	     updateReadouts();
+	 });
 
-  $('btn-fan-fail').addEventListener('click', () => {
-    state.nFans = 0;
-    $('s-nf').value = 0;
-    updateReadouts();
-  });
+	 $('btn-fan-fail').addEventListener('click', () => {
+	     state.nFans = 0;
+	     $('s-nf').value = 0;
+	     updateReadouts();
+	 });
 
-  const pauseBtn = $('btn-pause');
-  pauseBtn.addEventListener('click', () => {
-    state.paused = !state.paused;
-    pauseBtn.textContent = state.paused ? 'Resume' : 'Pause';
-  });
+	 const pauseBtn = $('btn-pause');
+	 pauseBtn.addEventListener('click', () => {
+	     state.paused = !state.paused;
+	     pauseBtn.textContent = state.paused ? 'Resume' : 'Pause';
+	 });
 
-  document.querySelectorAll('.speed-btn').forEach(b => {
-    b.addEventListener('click', () => {
-      document.querySelectorAll('.speed-btn').forEach(x => x.classList.remove('active'));
-      b.classList.add('active');
-      state.simSpeed = parseInt(b.dataset.speed);
-    });
-  });
+	 document.querySelectorAll('.speed-btn').forEach(b => {
+	     b.addEventListener('click', () => {
+		 document.querySelectorAll('.speed-btn').forEach(x => x.classList.remove('active'));
+		 b.classList.add('active');
+		 state.simSpeed = parseInt(b.dataset.speed);
+	     });
+	 });
 
-  // ---------- main loop ----------
-  let lastFrame = performance.now();
-  function loop(now) {
-    const wallElapsed = Math.min((now - lastFrame) / 1000, 0.1);
-    lastFrame = now;
-    if (!state.paused) {
-      const simSeconds = state.simSpeed * wallElapsed;
-      let n = Math.floor(simSeconds / DT);
-      if (n > 4000) n = 4000;
-      for (let i = 0; i < n; i++) step();
-    }
-    drawChart();
-    updateReadouts();
-    requestAnimationFrame(loop);
-  }
+	 // ---------- main loop ----------
+	 let lastFrame = performance.now();
+	 function loop(now) {
+	     const wallElapsed = Math.min((now - lastFrame) / 1000, 0.1);
+	     lastFrame = now;
+	     if (!state.paused) {
+		 const simSeconds = state.simSpeed * wallElapsed;
+		 let n = Math.floor(simSeconds / DT);
+		 if (n > 4000) n = 4000;
+		 for (let i = 0; i < n; i++) step();
+	     }
+	     drawChart();
+	     updateReadouts();
+	     requestAnimationFrame(loop);
+	 }
 
-  let resizeTO;
-  window.addEventListener('resize', () => {
-    clearTimeout(resizeTO);
-    resizeTO = setTimeout(drawChart, 80);
-  });
+	 let resizeTO;
+	 window.addEventListener('resize', () => {
+	     clearTimeout(resizeTO);
+	     resizeTO = setTimeout(drawChart, 80);
+	 });
 
-  updateReadouts();
-  drawChart();
-  requestAnimationFrame(loop);
-})();
-</script>
+	 updateReadouts();
+	 drawChart();
+	 requestAnimationFrame(loop);
+     })();
+    </script>
 	</div>
     </body>
 </html>
