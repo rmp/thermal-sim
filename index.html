@@ -58,7 +58,7 @@
 	    .ctrl-val { flex: 0 0 64px; text-align: right; font-family: var(--font-mono); font-size: 12px; font-weight: 500; }
 	    .toolbar { display: flex; gap: 6px; align-items: center; margin-top: 14px; flex-wrap: wrap; padding-top: 12px; border-top: 0.5px solid var(--color-border-tertiary); }
 	    .speed-btn { padding: 4px 10px; font-size: 12px; }
-	    .speed-btn.active { background: var(--color-background-info); color: var(--color-text-info); border-color: var(--color-border-info); }
+	    .speed-btn.active { background: #2563eb; color: #fff; border-color: #2563eb; }
 	    .speed-label { font-size: 11px; color: var(--color-text-secondary); margin-left: auto; }
 	    </style>
 
@@ -354,13 +354,15 @@
 
 		// ---------- main loop ----------
 		let lastFrame = performance.now();
+		let accumulator = 0;
 		function loop(now) {
 		    const wallElapsed = Math.min((now - lastFrame) / 1000, 0.1);
 		    lastFrame = now;
 		    if (!state.paused) {
-			const simSeconds = state.simSpeed * wallElapsed;
-			let n = Math.floor(simSeconds / DT);
+			accumulator += state.simSpeed * wallElapsed;
+			let n = Math.floor(accumulator / DT);
 			if (n > 4000) n = 4000;
+			accumulator -= n * DT;
 			for (let i = 0; i < n; i++) step();
 		    }
 		    drawChart();
